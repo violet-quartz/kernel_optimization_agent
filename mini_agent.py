@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 
 
 user_input = """
-读取文件 /Users/flora/code/kernelswift_competition/v0/centre_random_augmentation.py， 介绍一下它在干什么。
+读取文件 /tasks/centre_random_augmentation.py， 介绍一下它在干什么。
 以 get_init_inputs 的返回值初始化 Model，以 get_inputs 的返回值作为 forwad 的 参数，运行 model.forward，看输出是什么。
 """
 
