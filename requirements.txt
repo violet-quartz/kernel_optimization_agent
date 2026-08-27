@@ -1,0 +1,12 @@
+# Agent 本体
+anthropic>=1.0.0          # beta_tool / tool_runner
+python-dotenv>=1.0.0      # 读取 .env 里的 ANTHROPIC_BASE_URL / API_KEY
+pydantic>=2.0             # beta_tool 的参数校验；测试里直接断言 ValidationError
+
+# 评测 harness（tools/auto_bench_v2.py）
+#
+# GPU 机器上不要直接用这一行装 torch —— 要按卡选官方 wheel，例如 CUDA 12.8：
+#   pip install torch --index-url https://download.pytorch.org/whl/cu128
+# Linux 版 torch wheel 自带 triton，无需单独安装；生成的 kernel 直接 import triton 即可。
+# 开发机（无 GPU）装 CPU 版就够跑测试。
+torch>=2.4

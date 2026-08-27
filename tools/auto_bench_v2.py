@@ -823,18 +823,27 @@ def compare_case(name, v0_path, v1_path, args):
     )
 
 from anthropic import beta_tool
+from anthropic.lib.tools import ToolError
 
-def check_input_file_path(v0_file: Path, v1_file: Path) -> tuple[Path]:
-    v0_path = v0_file.resolve()
-    v1_path = v1_file.resolve()
+def check_input_file_path(v0_file: Path | str, v1_file: Path | str) -> tuple[Path, Path]:
+    """Resolve and validate the two file paths a tool was handed.
+
+    Accepts `str` as well as `Path`: which one arrives depends on the tool's
+    annotation, and a plain `str` used to reach `.resolve()` and blow up with
+    an AttributeError. Failures raise `ToolError` rather than `SystemExit`
+    because the tool runner only catches `Exception` — a `SystemExit` here
+    would tear down the whole agent loop instead of letting the model retry.
+    """
+    v0_path = Path(v0_file).resolve()
+    v1_path = Path(v1_file).resolve()
     if not v0_path.is_file():
-        raise SystemExit(f"v0_file is not a file: {v0_path}")
+        raise ToolError(f"v0_file is not a file: {v0_path}")
     if not v1_path.is_file():
-        raise SystemExit(f"v1_file is not a file: {v1_path}")
+        raise ToolError(f"v1_file is not a file: {v1_path}")
     if v0_path.suffix != ".py":
-        raise SystemExit(f"v0_file must be a .py file: {v0_path}")
+        raise ToolError(f"v0_file must be a .py file: {v0_path}")
     if v1_path.suffix != ".py":
-        raise SystemExit(f"v1_file must be a .py file: {v1_path}")
+        raise ToolError(f"v1_file must be a .py file: {v1_path}")
     return v0_path, v1_path
 
 @beta_tool
@@ -867,7 +876,7 @@ def check_correctness(v0_file: Path, v1_file: Path, seed: int=42, atol: float | 
         KsCompareError: The outputs differ, the shapes/dtypes/structures do not
             match, or a model failed to build or run. The message reports the
             worst mismatch (index, both values, absolute and relative error).
-        SystemExit: A path is missing or is not a .py file.
+        ToolError: A path is missing or is not a .py file.
     """
     v0_path, v1_path = check_input_file_path(v0_file=v0_file, v1_file=v1_file)
     name = str(v0_path)
@@ -901,7 +910,7 @@ def check_correctness(v0_file: Path, v1_file: Path, seed: int=42, atol: float | 
     return f"correct: outputs match ({format_tol_used(tol_used) or 'no tolerance applied'})"
 
 @beta_tool
-def bench_mark(v0_file: str, v1_file: str, seed: int=42, warmup: int=200, repeat: int=500):
+def bench_mark(v0_file: Path, v1_file: Path, seed: int=42, warmup: int=200, repeat: int=500):
     """Benchmark an optimized kernel against the original and report the speedup.
 
     Loads `Model` from the v0 file and `ModelNew` from the v1 file, syncs
@@ -935,7 +944,7 @@ def bench_mark(v0_file: str, v1_file: str, seed: int=42, warmup: int=200, repeat
 
     Raises:
         KsCompareError: A model failed to build or run.
-        SystemExit: A path is missing or is not a .py file.
+        ToolError: A path is missing or is not a .py file.
     """
     v0_path, v1_path = check_input_file_path(v0_file=v0_file, v1_file=v1_file)
     name = str(v0_path)
