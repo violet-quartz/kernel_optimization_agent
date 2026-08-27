@@ -1,6 +1,7 @@
 import argparse
 import ast
 import importlib.util
+import json
 import itertools  # updated: for _get_model_device's chain(parameters, buffers)
 import statistics
 import sys
@@ -984,8 +985,9 @@ def bench_mark(v0_file: str, v1_file: str, seed: int=42, warmup: int=200, repeat
             warnings.append(message)
             _warn_once(message)
     # TimingStats is a dataclass and cannot cross the tool boundary — the
-    # runner puts this value straight into the request body, which must be JSON.
-    return {
+    # runner puts this value straight into the request body, where tool_result
+    # content must be a string (a dict there is rejected outright), so encode.
+    return json.dumps({
         "speedup": round(speedup, 4),
         "v0_median_ms": round(v0_stats.median_ms, 6),
         "v1_median_ms": round(v1_stats.median_ms, 6),
@@ -995,7 +997,7 @@ def bench_mark(v0_file: str, v1_file: str, seed: int=42, warmup: int=200, repeat
         "v1_stdev_ms": round(v1_stats.stdev_ms, 6),
         "timing_method": v0_stats.method,
         "warnings": warnings,
-    }
+    }, indent=2, ensure_ascii=False)
 
 
 def main():

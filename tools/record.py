@@ -200,6 +200,18 @@ def _leaderboard(run: Run, limit: int = 3) -> list[dict]:
     ]
 
 
+def _as_tool_text(payload: dict) -> str:
+    """Render a tool result as text.
+
+    The tool runner passes a tool's return value straight into
+    ``{"type": "tool_result", "content": <value>}`` without serialising it
+    (`anthropic/lib/tools/_beta_runner.py`), and that field only accepts a
+    string or a list of content blocks. Returning a dict makes the API reject
+    the whole request with `expected a string or a list`, so encode here.
+    """
+    return json.dumps(payload, indent=2, ensure_ascii=False, default=str)
+
+
 def _now() -> str:
     return datetime.now().astimezone().isoformat(timespec="seconds")
 
@@ -213,7 +225,7 @@ def make_kernel_tools(run: Run):
     """Build the two run-bound tools. Returns (write_triton_kernel, record_result)."""
 
     @beta_tool
-    def write_triton_kernel(code: str, strategy: str, parent: str | None = None) -> dict:
+    def write_triton_kernel(code: str, strategy: str, parent: str | None = None) -> str:
         """Save a new version of the optimized kernel and return its path.
 
         The version number and the file location are assigned by the harness —
@@ -275,12 +287,14 @@ def make_kernel_tools(run: Run):
             + "\n",
             encoding="utf-8",
         )
-        return {
-            "version": version,
-            "kernel_path": str(run.kernel_path(version)),
-            "v0_path": str(run.v0_path),
-            "warnings": warnings,
-        }
+        return _as_tool_text(
+            {
+                "version": version,
+                "kernel_path": str(run.kernel_path(version)),
+                "v0_path": str(run.v0_path),
+                "warnings": warnings,
+            }
+        )
 
     @beta_tool
     def record_result(
@@ -290,7 +304,7 @@ def make_kernel_tools(run: Run):
         v1_ms: float | None = None,
         error: str | None = None,
         notes: str | None = None,
-    ) -> dict:
+    ) -> str:
         """Record how a version performed, and update the best-so-far pointer.
 
         Call this once per version, after check_correctness and (if it passed)
@@ -369,12 +383,14 @@ def make_kernel_tools(run: Run):
             history_row["error"] = history_row["error"][:_MAX_HISTORY_ERROR_CHARS]
         _append_history(run, history_row)
 
-        return {
-            "recorded": row,
-            "is_best": is_best,
-            "best": run.read_meta().get("best"),
-            "attempts": len(load_history(run)),
-            "leaderboard": _leaderboard(run),
-        }
+        return _as_tool_text(
+            {
+                "recorded": row,
+                "is_best": is_best,
+                "best": run.read_meta().get("best"),
+                "attempts": len(load_history(run)),
+                "leaderboard": _leaderboard(run),
+            }
+        )
 
     return write_triton_kernel, record_result
