@@ -31,6 +31,11 @@ except ImportError:
 # build_case still calls both, and compares the argument counts.
 REQUIRED_V1_FUNCS = ("get_init_inputs", "get_inputs")
 
+# Kept in sync with auto_bench's OUTCOME_FILENAME by hand, deliberately: this
+# module must stay importable on a machine with no accelerator, and importing
+# the name from there would drag torch in for one string.
+OUTCOME_FILENAME = "bench.json"
+
 _MAX_ERROR_CHARS = 2000
 _MAX_HISTORY_ERROR_CHARS = 400
 
@@ -297,50 +302,64 @@ def make_kernel_tools(run: Run):
         )
 
     @beta_tool
-    def record_result(
-        version: str,
-        correct: bool,
-        v0_ms: float | None = None,
-        v1_ms: float | None = None,
-        error: str | None = None,
-        notes: str | None = None,
-    ) -> str:
+    def record_result(version: str, notes: str | None = None) -> str:
         """Record how a version performed, and update the best-so-far pointer.
 
         Call this once per version, after check_correctness and (if it passed)
-        bench_mark. The speedup is computed here from the two timings — do not
-        compute it yourself.
+        bench_mark. Whether the version was correct and how fast it ran are read
+        from what those two tools measured — you do not report them, and you
+        cannot override them. Only `notes` is yours to write.
 
         Args:
             version: The version being reported, e.g. "v003".
-            correct: Whether check_correctness passed.
-            v0_ms: Median milliseconds for the original — bench_mark's
-                `v0_median_ms`. Omit when the kernel was not benchmarked.
-            v1_ms: Median milliseconds for this version — bench_mark's
-                `v1_median_ms`. Omit when the kernel was not benchmarked.
-            error: The failure message, when `correct` is false or the
-                benchmark raised. Paste the harness's message verbatim.
             notes: Anything worth knowing on a later attempt — which shape hurt,
-                what the profiler showed, what to try next.
+                what the resource or TTGIR numbers showed, what to try next.
 
         Returns:
             A dict with the recorded row, whether this version is the new best,
             and the current top-3 leaderboard by measured time.
 
         Raises:
-            ToolError: Unknown version, or a timing that is not a positive
-                number.
+            ToolError: Unknown version, or check_correctness has not been run on
+                this version yet (a correct version also needs bench_mark).
         """
         if version not in run.versions():
             raise ToolError(
                 f"No such version: {version!r}. Known versions: "
                 f"{', '.join(run.versions()) or '(none)'}."
             )
-        for label, value in (("v0_ms", v0_ms), ("v1_ms", v1_ms)):
-            if value is not None and (value != value or value <= 0):
-                raise ToolError(f"{label} must be a positive number, got {value!r}.")
 
         vdir = run.version_dir(version)
+        # Written by check_correctness / bench_mark into the version directory,
+        # because they are handed this version's kernel.py. Reading them here is
+        # what keeps the leaderboard measured rather than self-reported.
+        outcome = {}
+        outcome_path = vdir / OUTCOME_FILENAME
+        if outcome_path.is_file():
+            try:
+                outcome = json.loads(outcome_path.read_text(encoding="utf-8"))
+            except json.JSONDecodeError:
+                outcome = {}
+
+        check = outcome.get("check")
+        if not check:
+            raise ToolError(
+                f"No correctness result for {version}. Run "
+                f"check_correctness(v0_file=..., v1_file={str(run.kernel_path(version))!r}) "
+                "first — its outcome is what gets recorded."
+            )
+        correct = bool(check.get("correct"))
+        error = check.get("error")
+
+        bench = outcome.get("bench") or {}
+        if correct and not bench:
+            raise ToolError(
+                f"{version} passed check_correctness but was never benchmarked. Run "
+                f"bench_mark(v0_file=..., v1_file={str(run.kernel_path(version))!r}) "
+                "before recording it."
+            )
+        v0_ms = bench.get("v0_ms")
+        v1_ms = bench.get("v1_ms")
         attempt = {}
         attempt_path = vdir / "attempt.json"
         if attempt_path.is_file():
@@ -356,6 +375,7 @@ def make_kernel_tools(run: Run):
             "v1_ms": v1_ms,
             "speedup": speedup,
             "error": (error or "")[:_MAX_ERROR_CHARS] or None,
+            "timing_method": bench.get("timing_method"),
             "notes": notes,
             "recorded_at": _now(),
         }

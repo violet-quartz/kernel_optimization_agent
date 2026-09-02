@@ -825,6 +825,36 @@ def compare_case(name, v0_path, v1_path, args):
 from anthropic import beta_tool
 from anthropic.lib.tools import ToolError
 
+# Name of the file the two tools drop their own result into, in the directory
+# of the v1 file they were given. The run harness lays out one directory per
+# version (runs/<id>/<version>/kernel.py), so this lands inside that version's
+# directory without either tool having to know the run exists — and it lets
+# record_result read what actually happened instead of trusting a retyped
+# number.
+OUTCOME_FILENAME = "bench.json"
+
+
+def record_outcome(v1_path: Path, section: str, payload: dict) -> None:
+    """Merge `payload` into `bench.json` under `section`, beside the v1 file.
+
+    Best effort: a v1 file in a directory that cannot be written (bench.py run
+    by hand on a read-only tree) must not fail the measurement it just made.
+    """
+    path = v1_path.parent / OUTCOME_FILENAME
+    payload = {**payload, "at": time.strftime("%Y-%m-%dT%H:%M:%S%z")}
+    try:
+        existing = {}
+        if path.is_file():
+            existing = json.loads(path.read_text(encoding="utf-8"))
+        existing[section] = payload
+        path.write_text(
+            json.dumps(existing, indent=2, ensure_ascii=False, default=str) + "\n",
+            encoding="utf-8",
+        )
+    except Exception as exc:
+        _warn_once(f"could not write {path}: {exc}")
+
+
 def check_input_file_path(v0_file: Path | str, v1_file: Path | str) -> tuple[Path, Path]:
     """Resolve and validate the two file paths a tool was handed.
 
@@ -904,7 +934,19 @@ def check_correctness(v0_file: Path, v1_file: Path, seed: int=42, atol: float | 
     v1_output = run_forward(model_new, v1_inputs, seed, f"{name}: v1")
     # updated: collect the tolerance actually applied.
     tol_used = []
-    compare_values(v0_output, v1_output, "output", atol, rtol, tol_used)
+    try:
+        compare_values(v0_output, v1_output, "output", atol, rtol, tol_used)
+    except Exception as exc:
+        # A failure has to be recorded too, and only this frame has the
+        # message; record_result would otherwise have nothing but the model's
+        # own account of what went wrong.
+        record_outcome(v1_path, "check", {"correct": False, "error": str(exc)[:2000]})
+        raise
+    record_outcome(
+        v1_path,
+        "check",
+        {"correct": True, "error": None, "tol": format_tol_used(tol_used) or None},
+    )
     # A bare True cannot be a tool_result: the runner passes the return value
     # straight into the request body, where content must be text.
     return f"correct: outputs match ({format_tol_used(tol_used) or 'no tolerance applied'})"
@@ -993,6 +1035,17 @@ def bench_mark(v0_file: Path, v1_file: Path, seed: int=42, warmup: int=200, repe
             )
             warnings.append(message)
             _warn_once(message)
+    record_outcome(
+        v1_path,
+        "bench",
+        {
+            "v0_ms": round(v0_stats.median_ms, 6),
+            "v1_ms": round(v1_stats.median_ms, 6),
+            "speedup": round(speedup, 4),
+            "timing_method": v0_stats.method,
+            "warnings": warnings,
+        },
+    )
     # TimingStats is a dataclass and cannot cross the tool boundary — the
     # runner puts this value straight into the request body, where tool_result
     # content must be a string (a dict there is rejected outright), so encode.

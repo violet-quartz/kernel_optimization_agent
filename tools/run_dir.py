@@ -144,6 +144,15 @@ class Run:
         return self.root / "history.jsonl"
 
     @property
+    def transcript_path(self) -> Path:
+        """Full conversation of the run, one message per line.
+
+        `history.jsonl` records what the model *decided*; this records how it
+        got there — every assistant message and every tool result, in order.
+        """
+        return self.root / "transcript.jsonl"
+
+    @property
     def triton_cache_dir(self) -> Path:
         return self.root / "triton_cache"
 
