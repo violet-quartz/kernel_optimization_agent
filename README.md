@@ -1,4 +1,4 @@
-# kernel_optimization_agent
+# kernel_optimization_mini_agent
 
 一个**不用 agent 框架**的 Triton 算子优化 agent。
 
