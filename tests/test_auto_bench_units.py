@@ -19,7 +19,7 @@ class TestLiteralFilter(TempDirCase):
     warns the model about exactly this set, so the two must agree."""
 
     def kept(self, source: str) -> set:
-        from auto_bench_v2 import _filter_module_ast
+        from bench import _filter_module_ast
 
         tree = _filter_module_ast(ast.parse(source))
         names = set()
@@ -54,7 +54,7 @@ class TestLiteralFilter(TempDirCase):
         self.assertEqual(kept, set())
 
     def test_agrees_with_the_validator_in_record(self):
-        import auto_bench_v2
+        import bench
         import record
 
         cases = [
@@ -65,7 +65,7 @@ class TestLiteralFilter(TempDirCase):
             node = ast.parse(case).body[0].value
             with self.subTest(expr=case):
                 self.assertEqual(
-                    auto_bench_v2._is_safe_literal(node),
+                    bench._is_safe_literal(node),
                     record._is_safe_literal(node),
                     f"the two copies of _is_safe_literal disagree on `{case}`",
                 )
@@ -73,7 +73,7 @@ class TestLiteralFilter(TempDirCase):
 
 class TestLoadKsModule(TempDirCase):
     def test_loads_a_file_without_importing_it(self):
-        from auto_bench_v2 import load_ks_module
+        from bench import load_ks_module
 
         module = load_ks_module(self.write("v0.py", V0_SOURCE))
         self.assertTrue(hasattr(module, "Model"))
@@ -82,7 +82,7 @@ class TestLoadKsModule(TempDirCase):
     def test_module_level_side_effects_are_dropped(self):
         """A file that would crash on import at module level still loads,
         because only defs, imports and literal assignments survive."""
-        from auto_bench_v2 import load_ks_module
+        from bench import load_ks_module
 
         module = load_ks_module(
             self.write("boom.py", V0_SOURCE + "\nraise RuntimeError('never runs')\n")
@@ -90,7 +90,7 @@ class TestLoadKsModule(TempDirCase):
         self.assertTrue(hasattr(module, "Model"))
 
     def test_rejects_a_missing_or_non_python_file(self):
-        from auto_bench_v2 import KsCompareError, load_ks_module
+        from bench import KsCompareError, load_ks_module
 
         with self.assertRaises(KsCompareError):
             load_ks_module(self.tmp / "missing.py")
@@ -103,7 +103,7 @@ class TestBuildCase(TempDirCase):
     models and generates inputs. Everything after it needs a device."""
 
     def test_builds_both_models_from_the_same_seed(self):
-        from auto_bench_v2 import build_case
+        from bench import build_case
 
         case = build_case(
             self.write("v0.py", V0_SOURCE), self.write("v1.py", V1_SOURCE), seed=42
@@ -111,7 +111,7 @@ class TestBuildCase(TempDirCase):
         self.assertIsNotNone(case)
 
     def test_reports_a_v1_missing_model_new(self):
-        from auto_bench_v2 import KsCompareError, build_case
+        from bench import KsCompareError, build_case
 
         with self.assertRaises(KsCompareError) as ctx:
             build_case(
@@ -120,7 +120,7 @@ class TestBuildCase(TempDirCase):
         self.assertIn("ModelNew", str(ctx.exception))
 
     def test_reports_a_model_new_that_cannot_be_constructed(self):
-        from auto_bench_v2 import KsCompareError, build_case
+        from bench import KsCompareError, build_case
 
         broken = V1_SOURCE.replace("def __init__(self, scale):", "def __init__(self):")
         with self.assertRaises(KsCompareError):
@@ -131,7 +131,7 @@ class TestBuildCase(TempDirCase):
 
 class TestPathChecking(TempDirCase):
     def test_returns_resolved_paths(self):
-        from auto_bench_v2 import check_input_file_path
+        from bench import check_input_file_path
 
         v0 = self.write("v0.py", V0_SOURCE)
         v1 = self.write("nested/../v1.py", V1_SOURCE)
@@ -143,7 +143,7 @@ class TestPathChecking(TempDirCase):
         """`SystemExit` is a BaseException: the tool runner would not catch it
         and the agent loop would die instead of retrying."""
         from anthropic.lib.tools import ToolError
-        from auto_bench_v2 import check_input_file_path
+        from bench import check_input_file_path
 
         v0 = self.write("v0.py", V0_SOURCE)
         cases = {
@@ -161,7 +161,7 @@ class TestAcceleratorRequirement(TempDirCase):
     def test_a_cpu_only_box_gets_a_clear_message(self):
         """On a machine with no accelerator both tools must fail loudly rather
         than quietly timing CPU tensors and reporting a meaningless speedup."""
-        from auto_bench_v2 import _auto_accel_name, bench_mark, check_correctness
+        from bench import _auto_accel_name, bench_mark, check_correctness
 
         if _auto_accel_name() is not None:
             self.skipTest("this box has an accelerator; the GPU path is exercised for real")

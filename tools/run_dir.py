@@ -36,7 +36,7 @@ from pathlib import Path
 
 DEFAULT_RUNS_ROOT = Path(__file__).resolve().parent.parent / "runs"
 
-# `Model` and the two input factories are what auto_bench_v2.build_case looks
+# `Model` and the two input factories are what bench.build_case looks
 # up; a task missing any of them cannot be benchmarked at all, so it is worth
 # failing here rather than after the first kernel has been generated.
 REQUIRED_TASK_ATTRS = ("Model", "get_init_inputs", "get_inputs")

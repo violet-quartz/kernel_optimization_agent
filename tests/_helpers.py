@@ -96,3 +96,44 @@ class TempDirCase(unittest.TestCase):
         kwargs.setdefault("runs_root", self.tmp / "runs")
         kwargs.setdefault("set_triton_cache", False)
         return start_run(task, **kwargs)
+
+
+def write_outcome(
+    run,
+    version: str = "v001",
+    *,
+    correct: bool = True,
+    v0_ms: float | None = 2.0,
+    v1_ms: float | None = 1.0,
+    error: str | None = None,
+    timing_method: str = "perf_counter",
+) -> None:
+    """Leave beside a version's kernel what check_correctness / bench_mark
+    would have written there.
+
+    `record_result` reads its numbers from that file rather than from its own
+    arguments, so a test that wants to record a version has to stand in for the
+    two GPU-bound tools. It goes through `bench.record_outcome` itself: if the
+    file name or the section layout ever moves, that shows up here instead of
+    in a paid run.
+
+    A `v1_ms` of None writes no `bench` section at all — the shape of a version
+    that failed the correctness check and was never timed.
+    """
+    from bench import record_outcome
+
+    kernel = run.kernel_path(version)
+    record_outcome(kernel, "check", {"correct": correct, "error": error})
+    if v1_ms is None:
+        return
+    record_outcome(
+        kernel,
+        "bench",
+        {
+            "v0_ms": v0_ms,
+            "v1_ms": v1_ms,
+            "speedup": round(v0_ms / v1_ms, 4) if (v0_ms and v1_ms) else None,
+            "timing_method": timing_method,
+            "warnings": [],
+        },
+    )

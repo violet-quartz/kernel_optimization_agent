@@ -6,7 +6,7 @@ code and its reasoning. Version allocation, file layout and the `best` pointer
 stay under the harness's control.
 
 `write_triton_kernel` validates the generated source against the contract
-`auto_bench_v2.build_case` imposes on a v1 file *before* writing it, because
+`bench.build_case` imposes on a v1 file *before* writing it, because
 two of that contract's failure modes are silent: a `ModelNew = Model` alias and
 a non-literal module-level assignment are both dropped by `_filter_module_ast`,
 surfacing much later as `must define ModelNew` or a `NameError` from inside the
@@ -31,7 +31,7 @@ except ImportError:
 # build_case still calls both, and compares the argument counts.
 REQUIRED_V1_FUNCS = ("get_init_inputs", "get_inputs")
 
-# Kept in sync with auto_bench's OUTCOME_FILENAME by hand, deliberately: this
+# Kept in sync with bench's OUTCOME_FILENAME by hand, deliberately: this
 # module must stay importable on a machine with no accelerator, and importing
 # the name from there would drag torch in for one string.
 OUTCOME_FILENAME = "bench.json"
@@ -46,7 +46,7 @@ _MAX_HISTORY_ERROR_CHARS = 400
 
 
 def _is_safe_literal(node) -> bool:
-    """Mirror of auto_bench_v2._is_safe_literal — kept in sync deliberately.
+    """Mirror of bench._is_safe_literal — kept in sync deliberately.
 
     Importing it would drag torch into this module for one predicate, and this
     module has to stay importable on a machine with no accelerator.

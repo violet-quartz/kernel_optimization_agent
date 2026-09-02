@@ -14,13 +14,13 @@ from pathlib import Path
 
 from pydantic import ValidationError
 
-from tests._helpers import TempDirCase, V0_SOURCE, V1_SOURCE, kernel_source
+from tests._helpers import TempDirCase, V0_SOURCE, V1_SOURCE, kernel_source, write_outcome
 
 
 def all_tools(run=None):
     """Every tool the agent is given, as (name, tool) pairs."""
     import simple_agent
-    from auto_bench_v2 import bench_mark, check_correctness
+    from bench import bench_mark, check_correctness
 
     tools = [
         ("read_file", simple_agent.read_file),
@@ -121,9 +121,13 @@ class TestReturnValues(TempDirCase):
                 "write_triton_kernel",
                 {"code": kernel_source(), "strategy": "identity passthrough"},
             ),
-            ("record_result", {"version": "v001", "correct": True, "v0_ms": 2.0, "v1_ms": 1.0}),
+            ("record_result", {"version": "v001"}),
         ]
         for name, payload in calls:
+            if name == "record_result":
+                # It reports what check_correctness and bench_mark measured, so
+                # it needs the file they leave beside the kernel to exist.
+                write_outcome(run, payload["version"])
             with self.subTest(tool=name):
                 result = tools[name].call(payload)
                 self.assertIsInstance(
@@ -137,11 +141,8 @@ class TestReturnValues(TempDirCase):
             tools["write_triton_kernel"].call({"code": kernel_source(), "strategy": "s"})
         )
         self.assertEqual(out["version"], "v001")
-        out = json.loads(
-            tools["record_result"].call(
-                {"version": "v001", "correct": True, "v0_ms": 2.0, "v1_ms": 1.0}
-            )
-        )
+        write_outcome(run, "v001", v0_ms=2.0, v1_ms=1.0)
+        out = json.loads(tools["record_result"].call({"version": "v001"}))
         self.assertEqual(out["recorded"]["speedup"], 2.0)
 
 
@@ -157,7 +158,7 @@ class TestFailureModes(TempDirCase):
             ("check_correctness", {"v0_file": missing, "v1_file": missing}),
             ("bench_mark", {"v0_file": missing, "v1_file": missing}),
             ("write_triton_kernel", {"code": "def broken(:", "strategy": "s"}),
-            ("record_result", {"version": "v999", "correct": True}),
+            ("record_result", {"version": "v999"}),
         ]
         for name, payload in calls:
             with self.subTest(tool=name):
@@ -175,7 +176,7 @@ class TestFailureModes(TempDirCase):
         """The model always sends JSON strings. A `Path` annotation makes
         pydantic coerce them; a `str` annotation does not, and any later
         `.resolve()` raises AttributeError mid-run."""
-        from auto_bench_v2 import check_input_file_path
+        from bench import check_input_file_path
 
         v0 = self.write("v0.py", V0_SOURCE)
         v1 = self.write("v1.py", V1_SOURCE)

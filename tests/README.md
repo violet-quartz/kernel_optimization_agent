@@ -27,7 +27,7 @@ python -m unittest discover -s tests -t .
 | `test_tool_contracts.py` | 每个 `@beta_tool`：schema 里每个参数都有具体类型和描述；默认值是 `None` 的参数必须能接受 `null`；返回值必须是文本；坏输入必须抛 runner 能捕获的 `Exception` |
 | `test_run_dir.py` | 目录布局、v0 冻结副本、版本号分配、`best` 相对软链（run 可整体移动）、`latest` 查找 |
 | `test_record.py` | `write_triton_kernel` 的 6 条校验规则逐条、被拒不消耗版本号、speedup 由 harness 计算、best 只在「正确且更快」时移动 |
-| `test_auto_bench_units.py` | 加载器的字面量过滤、`record._is_safe_literal` 与 `auto_bench_v2` 那份是否仍然一致、`build_case`、路径校验 |
+| `test_auto_bench_units.py` | 加载器的字面量过滤、`record._is_safe_literal` 与 `bench` 那份是否仍然一致、`build_case`、路径校验 |
 
 `tests/_helpers.py` 里的 `V1_SOURCE` 故意只依赖 torch 不 import triton —— 会真正**加载**这个文件的用例，否则在没装 triton 的开发机上跑不了。
 

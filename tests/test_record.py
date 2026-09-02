@@ -12,7 +12,7 @@ import unittest
 
 from anthropic.lib.tools import ToolError
 
-from tests._helpers import TempDirCase, kernel_source
+from tests._helpers import TempDirCase, kernel_source, write_outcome
 
 
 class RecordCase(TempDirCase):
@@ -28,10 +28,27 @@ class RecordCase(TempDirCase):
         payload.update(kwargs)
         return json.loads(self.write_kernel.call(payload))
 
-    def record_ok(self, **kwargs) -> dict:
-        payload = {"version": "v001", "correct": True, "v0_ms": 2.0, "v1_ms": 1.0}
-        payload.update(kwargs)
-        return json.loads(self.record.call(payload))
+    def record_ok(
+        self,
+        version: str = "v001",
+        *,
+        correct: bool = True,
+        v0_ms: float | None = 2.0,
+        v1_ms: float | None = 1.0,
+        error: str | None = None,
+        **kwargs,
+    ) -> dict:
+        """Stand in for check_correctness / bench_mark, then record the version.
+
+        `record_result` takes no measurements of its own — it reads them from
+        the file those two tools leave in the version directory — so a test has
+        to write that file first. Everything else it accepts (`notes`) goes
+        through as a tool argument.
+        """
+        write_outcome(
+            self.run, version, correct=correct, v0_ms=v0_ms, v1_ms=v1_ms, error=error
+        )
+        return json.loads(self.record.call({"version": version, **kwargs}))
 
 
 class TestWriteKernel(RecordCase):
@@ -53,7 +70,7 @@ class TestWriteKernel(RecordCase):
         self.write_ok()
         self.record_ok()  # v001 becomes best
         self.write_ok()  # v002
-        self.record_ok(version="v002", v1_ms=5.0)  # slower, best stays v001
+        self.record_ok("v002", v1_ms=5.0)  # slower, best stays v001
         self.write_ok()  # v003
         attempt = json.loads(
             (self.run.version_dir("v003") / "attempt.json").read_text(encoding="utf-8")
@@ -136,7 +153,7 @@ class TestRecordResult(RecordCase):
         self.write_ok()
         self.record_ok()
         self.write_ok()
-        self.record_ok(version="v002", correct=False, error="illegal memory access")
+        self.record_ok("v002", correct=False, error="illegal memory access")
 
         rows = load_history(self.run)
         self.assertEqual([r["version"] for r in rows], ["v001", "v002"])
@@ -147,16 +164,16 @@ class TestRecordResult(RecordCase):
     def test_best_only_moves_on_a_correct_and_faster_version(self):
         for _ in range(3):
             self.write_ok()
-        self.record_ok(version="v001", v1_ms=1.0)
-        self.assertEqual(self.record_ok(version="v002", v1_ms=2.0)["best"], "v001")
-        self.assertEqual(self.record_ok(version="v003", v1_ms=0.5)["best"], "v003")
+        self.record_ok("v001", v1_ms=1.0)
+        self.assertEqual(self.record_ok("v002", v1_ms=2.0)["best"], "v001")
+        self.assertEqual(self.record_ok("v003", v1_ms=0.5)["best"], "v003")
         self.assertEqual(self.run.best_link.resolve(), self.run.version_dir("v003").resolve())
 
     def test_an_incorrect_version_never_becomes_best(self):
         self.write_ok()
         self.write_ok()
-        self.record_ok(version="v001", v1_ms=1.0)
-        out = self.record_ok(version="v002", correct=False, v1_ms=0.001)
+        self.record_ok("v001", v1_ms=1.0)
+        out = self.record_ok("v002", correct=False, v1_ms=0.001)
         self.assertFalse(out["is_best"])
         self.assertEqual(out["best"], "v001")
 
@@ -169,15 +186,15 @@ class TestRecordResult(RecordCase):
 
     def test_rejects_an_unknown_version(self):
         with self.assertRaises(ToolError) as ctx:
-            self.record.call({"version": "v042", "correct": True})
+            self.record.call({"version": "v042"})
         self.assertIn("v042", str(ctx.exception))
 
     def test_leaderboard_is_ordered_by_speedup(self):
         for _ in range(3):
             self.write_ok()
         self.record_ok(version="v001", v1_ms=2.0)
-        self.record_ok(version="v002", v1_ms=1.0)
-        out = self.record_ok(version="v003", v1_ms=4.0)
+        self.record_ok("v002", v1_ms=1.0)
+        out = self.record_ok("v003", v1_ms=4.0)
         speedups = [row["speedup"] for row in out["leaderboard"]]
         self.assertEqual(speedups, sorted(speedups, reverse=True))
 
